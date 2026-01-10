@@ -9,3 +9,5 @@ RemainAfterExit=Yes
 
 [Install]
 WantedBy=multi-user.target
+
+# vim: filetype=systemd
