@@ -1,0 +1,7 @@
+---
+- name: Deploy Shairport Sync AirPlay receiver
+  hosts: audio
+  become: true
+
+  roles:
+    - shairport-sync

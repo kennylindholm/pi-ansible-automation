@@ -1,0 +1,12 @@
+[Unit]
+Description=GMediaRender DLNA/UPnP audio renderer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/gmediarender -f "{{ dlna_renderer_name | default('dlna-audio') }}" --gstout-audiosink=pulsesink
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

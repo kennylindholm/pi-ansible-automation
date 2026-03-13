@@ -1,0 +1,54 @@
+---
+
+- name: Enable auto login on TTY for media user (required for audio to work)
+  ansible.builtin.include_role:
+    name: autottylogin
+
+- name: Install gmediarender and GStreamer plugins
+  ansible.builtin.apt:
+    name:
+      - gmediarender
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-bad
+      - gstreamer1.0-plugins-ugly
+      - gstreamer1.0-libav
+      - gstreamer1.0-pipewire
+      - avahi-daemon
+    state: present
+
+- name: Install pipewire audio stack
+  ansible.builtin.apt:
+    name:
+      - pipewire
+      - pipewire-audio
+      - pipewire-pulse
+      - pulseaudio-utils
+    state: present
+
+- name: Create user systemd folder
+  ansible.builtin.file:
+    path: /home/media/.config/systemd/user/
+    state: directory
+    owner: media
+    group: media
+    mode: '0700'
+
+- name: Create gmediarender service
+  ansible.builtin.template:
+    src: gmediarender.service
+    dest: /home/media/.config/systemd/user/gmediarender.service
+    owner: media
+    group: media
+    mode: '600'
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable gmediarender service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: gmediarender
+    state: started
+    enabled: true
+    scope: user
+  when: not ansible_check_mode

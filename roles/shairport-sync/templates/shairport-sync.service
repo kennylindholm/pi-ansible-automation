@@ -1,0 +1,12 @@
+[Unit]
+Description=Shairport Sync AirPlay receiver
+After=network-online.target pipewire.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/shairport-sync -o pw -a "{{ airplay_name | default('airplay-audio') }}" --use-stderr -v
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

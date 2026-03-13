@@ -1,0 +1,91 @@
+---
+- name: Install Python3 and pip
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-pil
+    state: present
+
+- name: Create spotify-bridge directory
+  ansible.builtin.file:
+    path: "{{ spotify_bridge_cache_dir }}"
+    state: directory
+    owner: media
+    group: media
+    mode: '0750'
+
+- name: Create spotify-bridge app directory
+  ansible.builtin.file:
+    path: /opt/spotify-bridge
+    state: directory
+    owner: media
+    group: media
+    mode: '0755'
+
+- name: Copy spotify-bridge application files
+  ansible.builtin.copy:
+    src: spotify-bridge/
+    dest: /opt/spotify-bridge/
+    owner: media
+    group: media
+    mode: '0644'
+  notify: Restart spotify-bridge
+
+- name: Make app.py executable
+  ansible.builtin.file:
+    path: /opt/spotify-bridge/app.py
+    mode: '0755'
+
+- name: Create Python virtual environment
+  become: true
+  become_user: media
+  ansible.builtin.command:
+    cmd: python3 -m venv /opt/spotify-bridge/venv
+    creates: /opt/spotify-bridge/venv/bin/python3
+
+- name: Install Python dependencies in venv
+  become: true
+  become_user: media
+  ansible.builtin.pip:
+    requirements: /opt/spotify-bridge/requirements.txt
+    virtualenv: /opt/spotify-bridge/venv
+  notify: Restart spotify-bridge
+
+- name: Deploy environment file
+  ansible.builtin.template:
+    src: spotify-bridge-env.j2
+    dest: /home/media/.config/spotify-bridge.env
+    owner: media
+    group: media
+    mode: '0600'
+  notify: Restart spotify-bridge
+
+- name: Create user systemd folder
+  ansible.builtin.file:
+    path: /home/media/.config/systemd/user/
+    state: directory
+    owner: media
+    group: media
+    mode: '0700'
+
+- name: Create spotify-bridge systemd user service
+  ansible.builtin.template:
+    src: spotify-bridge.service
+    dest: /home/media/.config/systemd/user/spotify-bridge.service
+    owner: media
+    group: media
+    mode: '0600'
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable and start spotify-bridge service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: spotify-bridge
+    state: started
+    enabled: true
+    scope: user
+  when: not ansible_check_mode

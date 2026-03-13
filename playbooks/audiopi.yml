@@ -1,0 +1,10 @@
+---
+- name: Deploy audio services (Spotify Connect, AirPlay, DLNA)
+  hosts: audio
+  become: true
+
+  roles:
+    - librespot
+    - shairport-sync
+    - dlna-renderer
+    - bluetooth-speaker
