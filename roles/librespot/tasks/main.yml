@@ -38,10 +38,20 @@
   when: not ansible_check_mode
   tags: create_librespot_service
 
-- name: Install pipewire-pulse
+- name: Install pipewire-pulse and audio utilities
   ansible.builtin.apt:
-    name: pipewire-pulse
+    name:
+      - pipewire-pulse
+      - pipewire-audio-client-libraries
+      - pulseaudio-utils
     state: present
+
+- name: Set default sink volume to 100%
+  become: false
+  remote_user: media
+  ansible.builtin.command: pactl set-sink-volume @DEFAULT_SINK@ 100%
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Enable librespot service
   become: false
