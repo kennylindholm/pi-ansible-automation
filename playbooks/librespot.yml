@@ -1,7 +1,0 @@
----
-- name: Deploy librespot Spotify Connect client
-  hosts: audio
-  become: true
-
-  roles:
-    - librespot

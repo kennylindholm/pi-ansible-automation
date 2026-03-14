@@ -3,7 +3,12 @@
   ansible.builtin.user:
     name: media
     createhome: true
-    groups: video,input
+    groups: video,input,audio,bluetooth
+
+- name: Enable linger for media user
+  ansible.builtin.command:
+    cmd: loginctl enable-linger media
+    creates: /var/lib/systemd/linger/media
 
 - name: Create folder required for getty
   ansible.builtin.file:
@@ -44,9 +49,12 @@
     state: present
     install_recommends: false
 
-- name: Install pipewire
+- name: Install pipewire, sox and audio utilities
   ansible.builtin.apt:
-    name: pipewire
+    name:
+      - pipewire
+      - sox
+      - pulsemixer
     state: present
     install_recommends: false
 
@@ -62,6 +70,44 @@
 # with ansible if you are not doing it while being that user
 # by enabling login with SSH for the media user we can handle enabling starting services as that user
 # in other tasks (all audio related for enabling audio related user services
+- name: Deploy login status script
+  ansible.builtin.copy:
+    src: files/audiopi-status.sh
+    dest: /etc/profile.d/audiopi-status.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy startup chime script
+  ansible.builtin.copy:
+    src: files/startup-chime.sh
+    dest: /home/media/startup-chime.sh
+    owner: media
+    group: media
+    mode: '0755'
+
+- name: Create user systemd folder
+  ansible.builtin.file:
+    path: /home/media/.config/systemd/user/
+    state: directory
+    owner: media
+    group: media
+    mode: '0700'
+
+- name: Deploy startup chime service
+  ansible.builtin.copy:
+    src: files/startup-chime.service
+    dest: /home/media/.config/systemd/user/startup-chime.service
+    owner: media
+    group: media
+    mode: '0644'
+  notify: Reload and enable startup chime
+
+- name: Clear WirePlumber saved volume state
+  ansible.builtin.file:
+    path: /home/media/.local/state/wireplumber/default-routes
+    state: absent
+
 - name: Deploy current users public SSH key for media user
   ansible.builtin.copy:
     remote_src: true

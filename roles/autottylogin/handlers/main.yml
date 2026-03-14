@@ -1,0 +1,9 @@
+---
+- name: Reload and enable startup chime
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: startup-chime
+    enabled: true
+    daemon_reload: true
+    scope: user

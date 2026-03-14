@@ -59,6 +59,31 @@
     group: media
     mode: '0700'
 
+- name: Create WirePlumber config folder
+  ansible.builtin.file:
+    path: /home/media/.config/wireplumber/wireplumber.conf.d/
+    state: directory
+    owner: media
+    group: media
+    mode: '0700'
+
+- name: Deploy WirePlumber bluetooth config
+  ansible.builtin.copy:
+    src: files/51-bluez-config.conf
+    dest: /home/media/.config/wireplumber/wireplumber.conf.d/51-bluez-config.conf
+    owner: media
+    group: media
+    mode: '0644'
+  notify: Restart wireplumber
+
+- name: Deploy bt-pair script
+  ansible.builtin.copy:
+    src: files/bt-pair
+    dest: /usr/local/bin/bt-pair
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Deploy speaker-agent script
   ansible.builtin.copy:
     src: files/speaker-agent.py
