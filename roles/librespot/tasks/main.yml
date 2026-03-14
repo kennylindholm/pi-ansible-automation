@@ -1,9 +1,5 @@
 ---
 
-- name: Enable auto login on TTY for media user (required for audio to work)
-  ansible.builtin.include_role:
-    name: autottylogin
-
 - name: Deduce OS architecture
   ansible.builtin.command: dpkg --print-architecture
   register: librespot_arch
@@ -18,14 +14,6 @@
     group: root
     mode: '655'
   when: not ansible_check_mode
-
-- name: Create user systemd folder
-  ansible.builtin.file:
-    path: /home/media/.config/systemd/user/
-    state: directory
-    owner: media
-    group: media
-    mode: '0700'
 
 - name: Create librespot service
   ansible.builtin.template:
@@ -45,13 +33,6 @@
       - pipewire-audio-client-libraries
       - pulseaudio-utils
     state: present
-
-- name: Set default sink volume to 100%
-  become: false
-  remote_user: media
-  ansible.builtin.command: pactl set-sink-volume @DEFAULT_SINK@ 100%
-  changed_when: false
-  when: not ansible_check_mode
 
 - name: Enable librespot service
   become: false

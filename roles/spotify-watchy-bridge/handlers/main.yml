@@ -1,0 +1,16 @@
+---
+- name: Reload systemd
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+
+- name: Restart spotify-watchy-bridge
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: spotify-watchy-bridge
+    state: restarted
+    scope: user
+  when: not ansible_check_mode

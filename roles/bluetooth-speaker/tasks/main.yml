@@ -1,0 +1,102 @@
+---
+
+- name: Install BlueZ and Bluetooth dependencies
+  ansible.builtin.apt:
+    name:
+      - bluez
+      - python3-dbus
+      - python3-gi
+    state: present
+
+- name: Install PipeWire Bluetooth plugin and audio stack
+  ansible.builtin.apt:
+    name:
+      - libspa-0.2-bluetooth
+      - pipewire
+      - pipewire-audio
+      - pipewire-pulse
+      - wireplumber
+      - pulseaudio-utils
+    state: present
+
+- name: Enable JustWorksRepairing in BlueZ config
+  ansible.builtin.lineinfile:
+    path: /etc/bluetooth/main.conf
+    regexp: '^#?JustWorksRepairing'
+    line: 'JustWorksRepairing = always'
+  notify: Restart bluetooth
+
+- name: Set Bluetooth adapter name
+  ansible.builtin.lineinfile:
+    path: /etc/bluetooth/main.conf
+    regexp: '^#?Name\s*='
+    line: "Name = {{ bluetooth_speaker_name | default('bluetooth-audio') }}"
+  notify: Restart bluetooth
+
+- name: Set Bluetooth device class to Audio (speaker)
+  ansible.builtin.lineinfile:
+    path: /etc/bluetooth/main.conf
+    regexp: '^#?Class\s*='
+    line: 'Class = 0x200414'
+  notify: Restart bluetooth
+
+- name: Ensure bluetooth service is enabled and started
+  ansible.builtin.systemd:
+    name: bluetooth
+    state: started
+    enabled: true
+    scope: system
+
+- name: Create WirePlumber config folder
+  ansible.builtin.file:
+    path: /home/media/.config/wireplumber/wireplumber.conf.d/
+    state: directory
+    owner: media
+    group: media
+    mode: '0700'
+
+- name: Deploy WirePlumber bluetooth config
+  ansible.builtin.copy:
+    src: files/51-bluez-config.conf
+    dest: /home/media/.config/wireplumber/wireplumber.conf.d/51-bluez-config.conf
+    owner: media
+    group: media
+    mode: '0644'
+  notify: Restart wireplumber
+
+- name: Deploy bt-pair script
+  ansible.builtin.copy:
+    src: files/bt-pair
+    dest: /usr/local/bin/bt-pair
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy speaker-agent script
+  ansible.builtin.copy:
+    src: files/speaker-agent.py
+    dest: /home/media/speaker-agent.py
+    owner: media
+    group: media
+    mode: '0755'
+  when: not ansible_check_mode
+
+- name: Create speaker-agent user service
+  ansible.builtin.template:
+    src: speaker-agent.service
+    dest: /home/media/.config/systemd/user/speaker-agent.service
+    owner: media
+    group: media
+    mode: '600'
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable speaker-agent user service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: speaker-agent
+    state: started
+    enabled: true
+    scope: user
+  when: not ansible_check_mode

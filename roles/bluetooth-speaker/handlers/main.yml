@@ -1,0 +1,14 @@
+---
+- name: Restart bluetooth
+  ansible.builtin.systemd:
+    name: bluetooth
+    state: restarted
+    scope: system
+
+- name: Restart wireplumber
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: wireplumber
+    state: restarted
+    scope: user

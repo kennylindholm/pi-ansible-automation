@@ -1,0 +1,45 @@
+---
+
+- name: Install shairport-sync and avahi-daemon
+  ansible.builtin.apt:
+    name:
+      - shairport-sync
+      - avahi-daemon
+    state: present
+
+- name: Stop and disable system-level shairport-sync service
+  ansible.builtin.systemd:
+    name: shairport-sync
+    state: stopped
+    enabled: false
+    scope: system
+  when: not ansible_check_mode
+
+- name: Install pipewire and audio utilities
+  ansible.builtin.apt:
+    name:
+      - pipewire
+      - pipewire-pulse
+      - pipewire-audio
+      - pulseaudio-utils
+    state: present
+
+- name: Create shairport-sync user service
+  ansible.builtin.template:
+    src: shairport-sync.service
+    dest: /home/media/.config/systemd/user/shairport-sync.service
+    owner: media
+    group: media
+    mode: '600'
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable shairport-sync user service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: shairport-sync
+    state: started
+    enabled: true
+    scope: user
+  when: not ansible_check_mode

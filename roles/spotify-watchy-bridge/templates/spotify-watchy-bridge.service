@@ -1,0 +1,15 @@
+[Unit]
+Description=Spotify Watchy Bridge API for Watchy remote control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/spotify-watchy-bridge.env
+ExecStart=/opt/spotify-watchy-bridge/venv/bin/python3 /opt/spotify-watchy-bridge/app.py
+WorkingDirectory=/opt/spotify-watchy-bridge
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

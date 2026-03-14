@@ -1,0 +1,11 @@
+[Unit]
+Description=Bluetooth speaker pairing agent
+After=bluetooth.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/media/speaker-agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
