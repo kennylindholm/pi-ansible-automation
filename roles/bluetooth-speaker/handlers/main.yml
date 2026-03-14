@@ -1,11 +1,4 @@
 ---
-- name: Reload systemd
-  become: false
-  remote_user: media
-  ansible.builtin.systemd:
-    daemon_reload: true
-    scope: user
-
 - name: Restart bluetooth
   ansible.builtin.systemd:
     name: bluetooth

@@ -3,6 +3,27 @@
   hosts: audio
   become: true
 
+  pre_tasks:
+    - name: Enable auto login on TTY for media user (required for audio to work)
+      ansible.builtin.include_role:
+        name: autottylogin
+
+    - name: Create media user systemd directory
+      ansible.builtin.file:
+        path: /home/media/.config/systemd/user/
+        state: directory
+        owner: media
+        group: media
+        mode: '0700'
+
+  handlers:
+    - name: Reload systemd
+      become: false
+      remote_user: media
+      ansible.builtin.systemd:
+        daemon_reload: true
+        scope: user
+
   roles:
     - librespot
     - shairport-sync

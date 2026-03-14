@@ -1,9 +1,5 @@
 ---
 
-- name: Enable auto login on tty for media user (required for pulseaudio to work)
-  ansible.builtin.include_role:
-    name: autottylogin
-
 - name: Create pipewire folders for module loading
   ansible.builtin.file:
     path: /home/media/.config/pipewire/pipewire.conf.d

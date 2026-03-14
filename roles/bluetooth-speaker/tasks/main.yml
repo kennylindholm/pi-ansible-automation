@@ -1,9 +1,5 @@
 ---
 
-- name: Enable auto login on TTY for media user (required for audio to work)
-  ansible.builtin.include_role:
-    name: autottylogin
-
 - name: Install BlueZ and Bluetooth dependencies
   ansible.builtin.apt:
     name:
@@ -50,14 +46,6 @@
     state: started
     enabled: true
     scope: system
-
-- name: Create user systemd folder
-  ansible.builtin.file:
-    path: /home/media/.config/systemd/user/
-    state: directory
-    owner: media
-    group: media
-    mode: '0700'
 
 - name: Create WirePlumber config folder
   ansible.builtin.file:
