@@ -1,0 +1,13 @@
+[Unit]
+Description=Startup chime
+After=wireplumber.service shairport-sync.service librespot.service gmediarender.service speaker-agent.service
+Wants=wireplumber.service shairport-sync.service librespot.service gmediarender.service speaker-agent.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 2
+ExecStart=/home/media/startup-chime.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

@@ -1,10 +1,10 @@
 [Unit]
 Description=GMediaRender DLNA/UPnP audio renderer
-After=network-online.target
+After=network-online.target pipewire.service
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/gmediarender -f "{{ dlna_renderer_name | default('dlna-audio') }}" --gstout-audiosink=pulsesink
+ExecStart=/usr/bin/gmediarender -f "{{ dlna_renderer_name | default('dlna-audio') }}" --gstout-audiosink=pipewiresink
 Restart=always
 RestartSec=5
 

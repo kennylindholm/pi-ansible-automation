@@ -46,12 +46,6 @@
       - pulseaudio-utils
     state: present
 
-- name: Set default sink volume to 100%
-  become: false
-  remote_user: media
-  ansible.builtin.command: pactl set-sink-volume @DEFAULT_SINK@ 100%
-  changed_when: false
-  when: not ansible_check_mode
 
 - name: Enable librespot service
   become: false

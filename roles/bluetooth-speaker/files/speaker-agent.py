@@ -103,10 +103,13 @@ def start_speaker_agent():
         "org.freedesktop.DBus.Properties"
     )
     adapter.Set("org.bluez.Adapter1", "DiscoverableTimeout",
-                dbus.UInt32(0))
+                dbus.UInt32(180))
+    adapter.Set("org.bluez.Adapter1", "PairableTimeout",
+                dbus.UInt32(180))
     adapter.Set("org.bluez.Adapter1", "Discoverable", True)
+    adapter.Set("org.bluez.Adapter1", "Pairable", True)
 
-    print("RPi speaker discoverable")
+    print("RPi speaker discoverable for 3 minutes")
 
     # As the RPi speaker will not have any interface, create a pairing
     # agent with NoInputNoOutput capability

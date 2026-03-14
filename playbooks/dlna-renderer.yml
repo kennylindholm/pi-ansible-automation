@@ -1,7 +1,0 @@
----
-- name: Deploy GMediaRender DLNA/UPnP audio renderer
-  hosts: audio
-  become: true
-
-  roles:
-    - dlna-renderer
