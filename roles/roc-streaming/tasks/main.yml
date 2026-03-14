@@ -16,8 +16,6 @@
   ansible.builtin.copy:
     src: files/roc-source.conf
     dest: /home/media/.config/pipewire/pipewire.conf.d/roc-source.conf
-    create: true
-    state: present
     owner: media
     group: media
     mode: '0644'
