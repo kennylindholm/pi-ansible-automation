@@ -17,6 +17,7 @@
       - pipewire-pulse
       - wireplumber
       - pulseaudio-utils
+      - cava
     state: present
 
 - name: Enable JustWorksRepairing in BlueZ config
