@@ -8,6 +8,7 @@ import dbus
 import dbus.mainloop.glib
 from gi.repository import GLib
 from pathlib import Path
+from datetime import datetime
 
 BUS_NAME = 'org.bluez'
 
@@ -22,8 +23,14 @@ mainloop = None
 pending = {}  # path -> {'timer_id': int}
 
 
+def log(msg):
+    ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{ts}] [bt-reconnect] {msg}", flush=True)
+
+
 def save_last_device(path):
     STATE_FILE.write_text(path)
+    log(f"Saved last device: {path}")
 
 
 def load_last_device():
@@ -32,50 +39,41 @@ def load_last_device():
     return None
 
 
-def is_paired(path):
-    try:
-        props = dbus.Interface(
-            bus.get_object(BUS_NAME, path),
-            'org.freedesktop.DBus.Properties'
-        )
-        return bool(props.Get('org.bluez.Device1', 'Paired'))
-    except dbus.DBusException:
-        return False
-
-
-def is_connected(path):
-    try:
-        props = dbus.Interface(
-            bus.get_object(BUS_NAME, path),
-            'org.freedesktop.DBus.Properties'
-        )
-        return bool(props.Get('org.bluez.Device1', 'Connected'))
-    except dbus.DBusException:
-        return False
+def get_device_props(path):
+    props = dbus.Interface(
+        bus.get_object(BUS_NAME, path, introspect=False),
+        'org.freedesktop.DBus.Properties'
+    )
+    return props.GetAll('org.bluez.Device1')
 
 
 def get_device_name(path):
     try:
-        props = dbus.Interface(
-            bus.get_object(BUS_NAME, path),
-            'org.freedesktop.DBus.Properties'
-        )
-        return str(props.Get('org.bluez.Device1', 'Name'))
+        return str(get_device_props(path).get('Name', path))
     except dbus.DBusException:
         return path
 
 
+def is_connected(path):
+    try:
+        return bool(get_device_props(path).get('Connected', False))
+    except dbus.DBusException:
+        return False
+
+
 def connect_device(path):
+    name = get_device_name(path)
+    log(f"Attempting Connect() on {name} ({path})")
     try:
         dev = dbus.Interface(
-            bus.get_object(BUS_NAME, path),
+            bus.get_object(BUS_NAME, path, introspect=False),
             'org.bluez.Device1'
         )
         dev.Connect()
-        print(f"[bt-reconnect] Connected to {get_device_name(path)}")
+        log(f"Connect() succeeded for {name}")
         return True
     except dbus.DBusException as e:
-        print(f"[bt-reconnect] Connect failed for {get_device_name(path)}: {e.get_dbus_message()}")
+        log(f"Connect() failed for {name}: {e.get_dbus_name()} — {e.get_dbus_message()}")
         return False
 
 
@@ -83,16 +81,20 @@ def cancel_pending(path):
     entry = pending.pop(path, None)
     if entry:
         GLib.source_remove(entry['timer_id'])
+        log(f"Cancelled pending reconnect for {get_device_name(path)}")
 
 
 def schedule(path, delay):
     cancel_pending(path)
 
-    print(f"[bt-reconnect] Reconnect attempt for {get_device_name(path)} in {delay}s")
+    name = get_device_name(path)
+    log(f"Scheduling reconnect for {name} in {delay}s (backoff cap: {BACKOFF_MAX}s)")
 
     def attempt():
+        log(f"Reconnect attempt for {name}")
+
         if is_connected(path):
-            print(f"[bt-reconnect] {get_device_name(path)} already connected, cancelling")
+            log(f"{name} is already connected, cancelling")
             pending.pop(path, None)
             return False
 
@@ -100,6 +102,7 @@ def schedule(path, delay):
             pending.pop(path, None)
         else:
             next_delay = min(delay * BACKOFF_FACTOR, BACKOFF_MAX)
+            log(f"Will retry in {next_delay}s")
             schedule(path, next_delay)
 
         return False  # one-shot timer
@@ -114,17 +117,18 @@ def on_properties_changed(iface, changed, invalidated, path=None):
     if 'Connected' not in changed:
         return
 
+    name = get_device_name(path)
     if changed['Connected']:
+        log(f"{name} connected")
         cancel_pending(path)
-        name = get_device_name(path)
-        print(f"[bt-reconnect] {name} connected — saving as last device")
         save_last_device(path)
     else:
         last = load_last_device()
+        log(f"{name} disconnected (last device: {last})")
         if path != last:
-            print(f"[bt-reconnect] {get_device_name(path)} disconnected (not last device, ignoring)")
+            log(f"Not the last device, ignoring")
             return
-        print(f"[bt-reconnect] {get_device_name(path)} disconnected — scheduling reconnect")
+        log(f"Scheduling reconnect for last device {name}")
         schedule(path, BACKOFF_INITIAL)
 
 
@@ -132,18 +136,32 @@ def reconnect_last_device():
     """On startup, reconnect the last known device if it's paired and disconnected."""
     path = load_last_device()
     if not path:
-        print("[bt-reconnect] No last device recorded, nothing to reconnect")
+        log("No last device recorded in state file, nothing to reconnect")
         return False
 
-    if not is_paired(path):
-        print(f"[bt-reconnect] Last device {path} is no longer paired, skipping")
+    log(f"Checking state of last device: {path}")
+
+    try:
+        props = get_device_props(path)
+        paired = bool(props.get('Paired', False))
+        connected = bool(props.get('Connected', False))
+        name = str(props.get('Name', path))
+        log(f"Device: {name} — paired={paired}, connected={connected}")
+    except dbus.DBusException as e:
+        log(f"BlueZ not ready ({e.get_dbus_name()}: {e.get_dbus_message()}), retrying in 15s")
+        GLib.timeout_add_seconds(15, reconnect_last_device)
         return False
 
-    if is_connected(path):
-        print(f"[bt-reconnect] {get_device_name(path)} already connected")
+    if not paired:
+        log(f"Device is no longer paired, clearing state file")
+        STATE_FILE.unlink(missing_ok=True)
         return False
 
-    print(f"[bt-reconnect] Reconnecting last device: {get_device_name(path)}")
+    if connected:
+        log(f"{name} is already connected")
+        return False
+
+    log(f"Device {name} is paired but not connected — starting reconnect")
     schedule(path, BACKOFF_INITIAL)
     return False  # one-shot
 
@@ -161,9 +179,8 @@ if __name__ == '__main__':
         path_keyword='path',
     )
 
-    # Give BlueZ a moment to settle before reconnecting
-    GLib.timeout_add_seconds(10, reconnect_last_device)
+    log(f"Started — will check for last device in 20s (state file: {STATE_FILE})")
+    GLib.timeout_add_seconds(20, reconnect_last_device)
 
-    print("[bt-reconnect] Started")
     mainloop = GLib.MainLoop()
     mainloop.run()

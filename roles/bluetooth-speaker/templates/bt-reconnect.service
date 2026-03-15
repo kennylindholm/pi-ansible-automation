@@ -6,6 +6,8 @@ After=bluetooth.target
 ExecStart=/usr/bin/python3 /home/media/bt-reconnect.py
 Restart=always
 RestartSec=10
+StandardOutput=append:/home/media/bt-reconnect.log
+StandardError=append:/home/media/bt-reconnect.log
 
 [Install]
 WantedBy=default.target
