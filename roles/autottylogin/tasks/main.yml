@@ -3,7 +3,7 @@
   ansible.builtin.user:
     name: media
     createhome: true
-    groups: video,input,audio,bluetooth
+    groups: video,input,audio,bluetooth,systemd-journal
 
 - name: Enable linger for media user
   ansible.builtin.command:
