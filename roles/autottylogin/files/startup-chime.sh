@@ -1,6 +1,6 @@
 #!/bin/bash
 # Set volume before chiming
-pactl set-sink-volume @DEFAULT_SINK@ 145%
+pactl set-sink-volume @DEFAULT_SINK@ 100%
 
 # Ascending three-note chime (C5 - E5 - G5) played via PipeWire
 for freq_dur in "523.25 0.35" "659.25 0.35" "783.99 0.55"; do
