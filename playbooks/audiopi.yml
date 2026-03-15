@@ -25,8 +25,13 @@
         scope: user
 
   roles:
-    - librespot
-    - shairport-sync
-    - dlna-renderer
-    - bluetooth-speaker
-    - roc-streaming
+    - role: librespot
+      tags: librespot
+    - role: shairport-sync
+      tags: shairport-sync
+    - role: dlna-renderer
+      tags: dlna-renderer
+    - role: bluetooth-speaker
+      tags: bluetooth-speaker
+    - role: roc-streaming
+      tags: roc-streaming

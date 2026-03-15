@@ -100,3 +100,32 @@
     enabled: true
     scope: user
   when: not ansible_check_mode
+
+- name: Deploy bt-reconnect script
+  ansible.builtin.copy:
+    src: files/bt-reconnect.py
+    dest: /home/media/bt-reconnect.py
+    owner: media
+    group: media
+    mode: '0755'
+  when: not ansible_check_mode
+
+- name: Create bt-reconnect user service
+  ansible.builtin.template:
+    src: bt-reconnect.service
+    dest: /home/media/.config/systemd/user/bt-reconnect.service
+    owner: media
+    group: media
+    mode: '600'
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable bt-reconnect user service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: bt-reconnect
+    state: started
+    enabled: true
+    scope: user
+  when: not ansible_check_mode

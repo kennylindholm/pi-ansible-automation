@@ -1,0 +1,11 @@
+[Unit]
+Description=Bluetooth auto-reconnect daemon
+After=bluetooth.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/media/bt-reconnect.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
