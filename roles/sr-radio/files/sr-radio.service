@@ -1,0 +1,13 @@
+[Unit]
+Description=Sveriges Radio live stream player
+Documentation=https://api.sr.se/api/v2/channels
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/sr-radio _run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

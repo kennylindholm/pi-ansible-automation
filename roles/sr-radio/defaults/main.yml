@@ -1,0 +1,20 @@
+---
+# SR live streams (AAC 320 kbps), resolved via channel id:
+# https://api.sr.se/api/v2/channels?liveaudiotemplateid=3&audioquality=hi
+# The plain <id>.mp3 URLs are only 96 kbps MP3.
+sr_radio_channels:
+  p1:
+    name: P1
+    url: https://www.sverigesradio.se/topsy/direkt/srapi/132-hi-aac-http.pls
+  p2:
+    name: P2
+    url: https://www.sverigesradio.se/topsy/direkt/srapi/163-hi-aac-http.pls
+  p3:
+    name: P3
+    url: https://www.sverigesradio.se/topsy/direkt/srapi/164-hi-aac-http.pls
+  p4stockholm:
+    name: P4 Stockholm
+    url: https://www.sverigesradio.se/topsy/direkt/srapi/701-hi-aac-http.pls
+
+sr_radio_default_channel: p4stockholm
+sr_radio_api_port: 8090

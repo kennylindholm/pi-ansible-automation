@@ -7,6 +7,8 @@
       - python3-dbus
       - python3-gi
     state: present
+    update_cache: true
+    cache_valid_time: 86400
 
 - name: Install PipeWire Bluetooth plugin and audio stack
   ansible.builtin.apt:
@@ -19,6 +21,8 @@
       - pulseaudio-utils
       - cava
     state: present
+    update_cache: true
+    cache_valid_time: 86400
 
 - name: Enable JustWorksRepairing in BlueZ config
   ansible.builtin.lineinfile:

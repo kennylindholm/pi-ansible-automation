@@ -6,11 +6,11 @@
     daemon_reload: true
     scope: user
 
-- name: Restart spotify-watchy-bridge
+- name: Restart sr-radio-api
   become: false
   remote_user: media
   ansible.builtin.systemd:
-    name: spotify-watchy-bridge
+    name: sr-radio-api
     state: restarted
     scope: user
   when: not ansible_check_mode

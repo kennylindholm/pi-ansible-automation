@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Play Sveriges Radio live streams on the audiopi.
+
+CLI:
+  sr-radio play [CHANNEL]   start playback (default channel if omitted)
+  sr-radio stop             stop playback
+  sr-radio status           show playback state and channel
+  sr-radio channels         list available channels
+
+HTTP API (run by sr-radio-api.service):
+  GET  /                    web GUI
+  GET  /status              {"playing": bool, "channel": str}
+  GET  /channels            {"channels": [{"id": str, "name": str}], "default": str}
+  POST /play                body {"channel": "p3"}, optional (default: current channel)
+  POST /select              switch channel without starting playback; if already
+                            playing, switches immediately
+  POST /stop
+
+Internal:
+  sr-radio serve            run the HTTP API
+  sr-radio _run             exec mpv for the current channel (used by sr-radio.service)
+"""
+import json
+import os
+import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CONFIG_FILE = os.environ.get("SR_RADIO_CONFIG", "/opt/sr-radio/config.json")
+STATE_FILE = os.environ.get("SR_RADIO_STATE", "/opt/sr-radio/current")
+
+
+def load_config():
+    with open(CONFIG_FILE) as f:
+        return json.load(f)
+
+
+def current_channel(config):
+    try:
+        with open(STATE_FILE) as f:
+            channel = f.read().strip()
+    except FileNotFoundError:
+        channel = ""
+    return channel if channel in config["channels"] else config["default_channel"]
+
+
+def systemctl(*args):
+    return subprocess.run(["systemctl", "--user", *args], check=False).returncode
+
+
+def is_playing():
+    return systemctl("is-active", "--quiet", "sr-radio") == 0
+
+
+def set_channel(config, channel):
+    if channel not in config["channels"]:
+        raise ValueError("unknown channel: %s (available: %s)"
+                         % (channel, ", ".join(sorted(config["channels"]))))
+    with open(STATE_FILE, "w") as f:
+        f.write(channel + "\n")
+
+
+def play(config, channel=None):
+    set_channel(config, channel or current_channel(config))
+    # enable so playback resumes after a power loss / reboot
+    systemctl("enable", "--quiet", "sr-radio")
+    systemctl("restart", "sr-radio")
+
+
+def select(config, channel):
+    set_channel(config, channel)
+    if is_playing():
+        systemctl("restart", "sr-radio")
+
+
+def stop():
+    systemctl("disable", "--quiet", "sr-radio")
+    systemctl("stop", "sr-radio")
+
+
+def status(config):
+    return {"playing": is_playing(), "channel": current_channel(config)}
+
+
+def run_player(config):
+    url = config["channels"][current_channel(config)]["url"]
+    # live streams cannot buffer ahead of real time, so fast reconnect is the
+    # only robustness lever: give up stalls quickly and let ffmpeg reconnect
+    # transparently instead of exiting
+    os.execvp("mpv", ["mpv", "--no-video", "--really-quiet",
+                      "--network-timeout=10",
+                      "--stream-lavf-o=reconnect=1,reconnect_streamed=1",
+                      url])
+
+
+GUI_PAGE = """<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SR Radio</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #101418; color: #e8eaed;
+         margin: 0; display: flex; justify-content: center; min-height: 100vh; }
+  main { width: min(420px, 92vw); padding: 2.5rem 0; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.2rem; }
+  #channels { display: grid; gap: .5rem; margin-bottom: 1.2rem; }
+  .ch { padding: .9rem 1rem; border-radius: .6rem; border: 1px solid #2a3138;
+        background: #1a2025; color: #e8eaed; font-size: 1rem; text-align: left;
+        cursor: pointer; }
+  .ch.sel { border-color: #4ea8de; background: #17384f; }
+  #toggle { width: 100%; padding: 1rem; font-size: 1.1rem; font-weight: 600;
+            border: 0; border-radius: .6rem; cursor: pointer;
+            background: #4ea8de; color: #06121c; }
+  #toggle.playing { background: #d9534f; color: #fff; }
+  #status { margin-top: 1rem; text-align: center; color: #7c868e; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SR Radio</h1>
+  <div id="channels"></div>
+  <button id="toggle" disabled>&#9654; Spela</button>
+  <p id="status">Laddar&hellip;</p>
+</main>
+<script>
+  let names = {}, st = { playing: false, channel: null };
+
+  const j = (url, body) => fetch(url, body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+
+  function paint() {
+    for (const btn of document.querySelectorAll(".ch"))
+      btn.classList.toggle("sel", btn.dataset.id === st.channel);
+    const toggle = document.getElementById("toggle");
+    toggle.disabled = false;
+    toggle.classList.toggle("playing", st.playing);
+    toggle.innerHTML = st.playing ? "&#9632; Stoppa" : "&#9654; Spela";
+    document.getElementById("status").textContent =
+      st.playing ? "Spelar " + (names[st.channel] || st.channel) : "Stoppad";
+  }
+
+  async function pickChannel(id) {
+    st = await j("/select", { channel: id });
+    paint();
+  }
+
+  async function toggle() {
+    st = st.playing ? await j("/stop", {}) : await j("/play", {});
+    paint();
+  }
+
+  async function refresh() {
+    st = await j("/status");
+    paint();
+  }
+
+  async function init() {
+    const data = await j("/channels");
+    const box = document.getElementById("channels");
+    for (const ch of data.channels) {
+      names[ch.id] = ch.name;
+      const btn = document.createElement("button");
+      btn.className = "ch";
+      btn.dataset.id = ch.id;
+      btn.textContent = ch.name;
+      btn.onclick = () => pickChannel(ch.id);
+      box.appendChild(btn);
+    }
+    document.getElementById("toggle").onclick = toggle;
+    await refresh();
+    setInterval(refresh, 3000);
+  }
+
+  init();
+</script>
+</body>
+</html>
+"""
+
+
+class Handler(BaseHTTPRequestHandler):
+    def reply(self, code, payload):
+        body = (json.dumps(payload) + "\n").encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        config = load_config()
+        if self.path == "/":
+            body = GUI_PAGE.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/status":
+            self.reply(200, status(config))
+        elif self.path == "/channels":
+            self.reply(200, {"channels": [{"id": cid, "name": ch["name"]}
+                                          for cid, ch in sorted(config["channels"].items())],
+                             "default": config["default_channel"]})
+        else:
+            self.reply(404, {"error": "not found"})
+
+    def body_channel(self, config):
+        length = int(self.headers.get("Content-Length") or 0)
+        if not length:
+            return None
+        body = json.loads(self.rfile.read(length))
+        return body.get("channel")
+
+    def do_POST(self):
+        config = load_config()
+        if self.path in ("/play", "/select"):
+            try:
+                channel = self.body_channel(config)
+                if self.path == "/play":
+                    play(config, channel)
+                else:
+                    select(config, channel or current_channel(config))
+            except ValueError as e:
+                return self.reply(400, {"error": str(e)})
+            self.reply(200, status(config))
+        elif self.path == "/stop":
+            stop()
+            self.reply(200, status(config))
+        else:
+            self.reply(404, {"error": "not found"})
+
+    def log_message(self, fmt, *args):
+        print("%s - %s" % (self.address_string(), fmt % args), flush=True)
+
+
+def main():
+    config = load_config()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "play":
+        channel = sys.argv[2] if len(sys.argv) > 2 else None
+        play(config, channel)
+        print("playing %s" % current_channel(config))
+    elif cmd == "stop":
+        stop()
+        print("stopped")
+    elif cmd == "status":
+        s = status(config)
+        print("%s (%s)" % ("playing" if s["playing"] else "stopped", s["channel"]))
+    elif cmd == "channels":
+        for cid, ch in sorted(config["channels"].items()):
+            print("%s\t%s" % (cid, ch["name"]))
+    elif cmd == "serve":
+        ThreadingHTTPServer(("0.0.0.0", config["port"]), Handler).serve_forever()
+    elif cmd == "_run":
+        run_player(config)
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except ValueError as e:
+        print("error: %s" % e, file=sys.stderr)
+        sys.exit(1)

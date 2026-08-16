@@ -1,0 +1,12 @@
+[Unit]
+Description=Sveriges Radio control API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/sr-radio serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

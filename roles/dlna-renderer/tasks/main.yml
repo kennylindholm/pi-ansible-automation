@@ -11,6 +11,8 @@
       - gstreamer1.0-pipewire
       - avahi-daemon
     state: present
+    update_cache: true
+    cache_valid_time: 86400
 
 - name: Install pipewire audio stack
   ansible.builtin.apt:
@@ -20,6 +22,8 @@
       - pipewire-pulse
       - pulseaudio-utils
     state: present
+    update_cache: true
+    cache_valid_time: 86400
 
 - name: Create gmediarender service
   ansible.builtin.template:

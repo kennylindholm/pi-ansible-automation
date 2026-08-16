@@ -35,3 +35,5 @@
       tags: bluetooth-speaker
     - role: roc-streaming
       tags: roc-streaming
+    - role: sr-radio
+      tags: sr-radio

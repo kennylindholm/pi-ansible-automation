@@ -47,6 +47,8 @@
   ansible.builtin.apt:
     name: acl
     state: present
+    update_cache: true
+    cache_valid_time: 86400
     install_recommends: false
 
 - name: Install pipewire, sox and audio utilities
@@ -56,6 +58,8 @@
       - sox
       - pulsemixer
     state: present
+    update_cache: true
+    cache_valid_time: 86400
     install_recommends: false
 
 - name: Create .ssh folder

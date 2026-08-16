@@ -5,6 +5,8 @@
   ansible.builtin.apt:
     name: [unattended-upgrades, apt-listchanges]
     state: present
+    update_cache: true
+    cache_valid_time: 86400
     install_recommends: false
 
 # todo we need mailx and or mailing facility for notifications

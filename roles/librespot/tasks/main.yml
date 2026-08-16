@@ -33,6 +33,8 @@
       - pipewire-audio-client-libraries
       - pulseaudio-utils
     state: present
+    update_cache: true
+    cache_valid_time: 86400
 
 - name: Enable librespot service
   become: false

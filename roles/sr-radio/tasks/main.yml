@@ -1,0 +1,57 @@
+---
+- name: Install mpv
+  ansible.builtin.apt:
+    name: mpv
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Create sr-radio config directory
+  ansible.builtin.file:
+    path: /opt/sr-radio
+    state: directory
+    owner: media
+    group: media
+    mode: '0755'
+
+- name: Deploy sr-radio config
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: /opt/sr-radio/config.json
+    owner: media
+    group: media
+    mode: '0644'
+  notify: Restart sr-radio-api
+
+- name: Install sr-radio CLI
+  ansible.builtin.copy:
+    src: sr-radio
+    dest: /usr/local/bin/sr-radio
+    owner: root
+    group: root
+    mode: '0755'
+  notify: Restart sr-radio-api
+
+- name: Create sr-radio systemd user services
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /home/media/.config/systemd/user/{{ item }}
+    owner: media
+    group: media
+    mode: '0600'
+  loop:
+    - sr-radio.service
+    - sr-radio-api.service
+  notify: Reload systemd
+  when: not ansible_check_mode
+
+- name: Enable and start sr-radio-api service
+  become: false
+  remote_user: media
+  ansible.builtin.systemd:
+    name: sr-radio-api
+    state: started
+    enabled: true
+    scope: user
+    daemon_reload: true
+  when: not ansible_check_mode
