@@ -87,10 +87,12 @@ def run_player(config):
     # live streams cannot buffer ahead of real time, so fast reconnect is the
     # only robustness lever: give up stalls quickly and let ffmpeg reconnect
     # transparently instead of exiting
-    os.execvp("mpv", ["mpv", "--no-video", "--really-quiet",
-                      "--network-timeout=10",
-                      "--stream-lavf-o=reconnect=1,reconnect_streamed=1",
-                      url])
+    args = ["mpv", "--no-video", "--really-quiet",
+            "--network-timeout=10",
+            "--stream-lavf-o=reconnect=1,reconnect_streamed=1"]
+    if config.get("audio_device"):
+        args.append("--audio-device=" + config["audio_device"])
+    os.execvp("mpv", args + [url])
 
 
 GUI_PAGE = """<!doctype html>
