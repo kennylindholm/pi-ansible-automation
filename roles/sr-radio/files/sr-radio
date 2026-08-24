@@ -412,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, status(config))
         elif self.path == "/channels":
             self.reply(200, {"channels": [{"id": cid, "name": ch["name"]}
-                                          for cid, ch in sorted(config["channels"].items())],
+                                          for cid, ch in config["channels"].items()],
                              "default": config["default_channel"]})
         elif self.path == "/outputs":
             self.reply(200, {"outputs": [{"id": oid, "name": o["name"]}
@@ -479,7 +479,7 @@ def main():
         s = status(config)
         print("%s (%s)" % ("playing" if s["playing"] else "stopped", s["channel"]))
     elif cmd == "channels":
-        for cid, ch in sorted(config["channels"].items()):
+        for cid, ch in config["channels"].items():
             print("%s\t%s" % (cid, ch["name"]))
     elif cmd == "output":
         if len(sys.argv) > 2:
@@ -489,7 +489,7 @@ def main():
         for oid, o in sorted(config["outputs"].items()):
             print("%s\t%s" % (oid, o["name"]))
     elif cmd == "serve":
-        ThreadingHTTPServer(("0.0.0.0", config["port"]), Handler).serve_forever()
+        ThreadingHTTPServer(("0.0.0.0", int(config["port"])), Handler).serve_forever()
     elif cmd == "_run":
         run_player(config)
     else:

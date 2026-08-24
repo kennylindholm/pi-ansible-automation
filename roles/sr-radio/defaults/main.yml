@@ -15,6 +15,34 @@ sr_radio_channels:
   p4stockholm:
     name: P4 Stockholm
     url: https://www.sverigesradio.se/topsy/direkt/srapi/701-hi-aac-http.pls
+  radioapan:
+    name: Radioapans knattekanal
+    url: https://www.sverigesradio.se/topsy/direkt/srapi/2755-hi-aac-http.pls
+  # commercial channels below are MP3 128 kbps (their best available)
+  mixmegapol:
+    name: Mix Megapol
+    url: https://live-bauerse-fm.sharp-stream.com/mixmegapol_instream_se_mp3
+  rockklassiker:
+    name: Rockklassiker
+    url: https://live-bauerse-fm.sharp-stream.com/rockklassiker_instream_se_mp3
+  vinylfm:
+    name: Vinyl FM
+    url: https://live-bauerse-fm.sharp-stream.com/vinylfm_instream_se_mp3
+  nrj:
+    name: NRJ
+    url: https://live-bauerse-fm.sharp-stream.com/nrj_instreamtest_se_mp3
+  rixfm:
+    name: RIX FM
+    url: https://fm01-ice.stream.khz.se/fm01_mp3
+  banditrock:
+    name: Bandit Rock
+    url: https://fm02-ice.stream.khz.se/fm02_mp3
+  lugnafavoriter:
+    name: Lugna Favoriter
+    url: https://fm03-ice.stream.khz.se/fm03_mp3
+  powerhit:
+    name: Power Hit Radio
+    url: https://fm04-ice.stream.khz.se/fm04_mp3
 
 sr_radio_default_channel: p4stockholm
 sr_radio_api_port: 8090
