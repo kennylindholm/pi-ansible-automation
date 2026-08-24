@@ -11,6 +11,9 @@ CLI:
 
 HTTP API (run by sr-radio-api.service):
   GET  /                    web GUI
+  GET  /mixer               volume mixer GUI
+  GET  /mixer.json          {"sinks": [{"id", "name", "volume"}], "streams": [...]}
+  POST /volume              body {"type": "sink"|"stream", "id": ..., "volume": 0-100}
   GET  /status              {"playing": bool, "channel": str, "output": str}
   GET  /channels            {"channels": [{"id": str, "name": str}], "default": str}
   GET  /outputs             {"outputs": [{"id": str, "name": str}], "default": str}
@@ -107,12 +110,63 @@ def status(config):
             "output": current_output(config)}
 
 
+def pactl_json(*args):
+    out = subprocess.run(["pactl", "-f", "json", *args], check=False,
+                         capture_output=True, text=True)
+    try:
+        return json.loads(out.stdout or "null") or []
+    except ValueError:
+        return []
+
+
+def volume_percent(volume):
+    for ch in volume.values():
+        percent = str(ch.get("value_percent", "")).rstrip("%")
+        try:
+            return int(float(percent))
+        except ValueError:
+            continue
+    return 0
+
+
+def mixer_state(config):
+    # label sinks with the configured output names where they match
+    labels = {o["device"].split("/", 1)[-1]: o["name"]
+              for o in config["outputs"].values() if o.get("device")}
+    sinks = [{"id": s["name"],
+              "name": labels.get(s["name"], s.get("description", s["name"])),
+              "volume": volume_percent(s.get("volume", {}))}
+             for s in pactl_json("list", "sinks")]
+    streams = [{"id": si["index"],
+                "name": si.get("properties", {}).get("application.name")
+                or si.get("properties", {}).get("media.name")
+                or "ström %s" % si["index"],
+                "volume": volume_percent(si.get("volume", {}))}
+               for si in pactl_json("list", "sink-inputs")]
+    return {"sinks": sinks, "streams": streams}
+
+
+def set_volume(kind, ident, volume):
+    try:
+        volume = max(0, min(100, int(volume)))
+    except (TypeError, ValueError):
+        raise ValueError("invalid volume")
+    ident = str(ident)
+    if not ident or ident.startswith("-"):
+        raise ValueError("invalid id")
+    commands = {"sink": "set-sink-volume", "stream": "set-sink-input-volume"}
+    if kind not in commands:
+        raise ValueError("invalid type: %s" % kind)
+    subprocess.run(["pactl", commands[kind], ident, "%d%%" % volume], check=False)
+
+
 def run_player(config):
     url = config["channels"][current_channel(config)]["url"]
     # live streams cannot buffer ahead of real time, so fast reconnect is the
     # only robustness lever: give up stalls quickly and let ffmpeg reconnect
     # transparently instead of exiting
     args = ["mpv", "--no-video", "--really-quiet",
+            "--audio-client-name=SR Radio",
             "--network-timeout=10",
             "--stream-lavf-o=reconnect=1,reconnect_streamed=1"]
     device = config["outputs"][current_output(config)]["device"]
@@ -147,6 +201,8 @@ GUI_PAGE = """<!doctype html>
   #output { flex: 1; padding: .6rem .8rem; border-radius: .6rem;
             border: 1px solid #2a3138; background: #1a2025; color: #e8eaed;
             font-size: 1rem; }
+  .nav { margin-top: 1.6rem; text-align: center; }
+  .nav a { color: #4ea8de; text-decoration: none; }
 </style>
 </head>
 <body>
@@ -156,6 +212,7 @@ GUI_PAGE = """<!doctype html>
   <label>Utg&aring;ng <select id="output"></select></label>
   <button id="toggle" disabled>&#9654; Spela</button>
   <p id="status">Laddar&hellip;</p>
+  <p class="nav"><a href="/mixer">Mixer &rarr;</a></p>
 </main>
 <script>
   let names = {}, st = { playing: false, channel: null };
@@ -228,6 +285,103 @@ GUI_PAGE = """<!doctype html>
 </html>
 """
 
+MIXER_PAGE = """<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SR Radio - Mixer</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #101418; color: #e8eaed;
+         margin: 0; display: flex; justify-content: center; min-height: 100vh; }
+  main { width: min(420px, 92vw); padding: 2.5rem 0; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.2rem; }
+  h2 { font-size: .95rem; font-weight: 600; color: #7c868e; margin: 1.6rem 0 .4rem;
+       text-transform: uppercase; letter-spacing: .05em; }
+  .nav { margin: 0 0 1rem; }
+  .nav a { color: #4ea8de; text-decoration: none; }
+  .row { display: flex; align-items: center; gap: .8rem; padding: .55rem .9rem;
+         margin-bottom: .5rem; border: 1px solid #2a3138; border-radius: .6rem;
+         background: #1a2025; }
+  .lab { flex: 0 0 30%; overflow: hidden; text-overflow: ellipsis;
+         white-space: nowrap; }
+  input[type=range] { flex: 1; accent-color: #4ea8de; }
+  .pct { flex: 0 0 3.2em; text-align: right; color: #7c868e;
+         font-variant-numeric: tabular-nums; }
+  .empty { color: #7c868e; }
+</style>
+</head>
+<body>
+<main>
+  <p class="nav"><a href="/">&larr; Radio</a></p>
+  <h1>Mixer</h1>
+  <h2>Utg&aring;ngar</h2>
+  <div id="sinks"></div>
+  <h2>Spelar nu</h2>
+  <div id="streams"><p class="empty">Laddar&hellip;</p></div>
+</main>
+<script>
+  const j = (url, body) => fetch(url, body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+
+  let dragging = false;
+
+  function row(kind, item) {
+    const div = document.createElement("div");
+    div.className = "row";
+    const lab = document.createElement("span");
+    lab.className = "lab";
+    lab.textContent = item.name;
+    lab.title = item.name;
+    const inp = document.createElement("input");
+    inp.type = "range";
+    inp.min = 0;
+    inp.max = 100;
+    inp.value = item.volume;
+    const pct = document.createElement("span");
+    pct.className = "pct";
+    pct.textContent = item.volume + "%";
+    let timer = null;
+    inp.oninput = () => {
+      pct.textContent = inp.value + "%";
+      clearTimeout(timer);
+      timer = setTimeout(
+        () => j("/volume", { type: kind, id: item.id, volume: +inp.value }), 150);
+    };
+    inp.onpointerdown = () => { dragging = true; };
+    inp.onpointerup = inp.onpointercancel = () => { dragging = false; };
+    div.append(lab, inp, pct);
+    return div;
+  }
+
+  function empty(text) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = text;
+    return p;
+  }
+
+  async function refresh() {
+    if (dragging) return;
+    const m = await j("/mixer.json");
+    document.getElementById("sinks").replaceChildren(
+      ...(m.sinks.length ? m.sinks.map(s => row("sink", s))
+                         : [empty("Inga utgångar hittades")]));
+    document.getElementById("streams").replaceChildren(
+      ...(m.streams.length ? m.streams.map(s => row("stream", s))
+                           : [empty("Inget spelar just nu")]));
+  }
+
+  refresh();
+  setInterval(refresh, 3000);
+</script>
+</body>
+</html>
+"""
+
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self, code, payload):
@@ -238,15 +392,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def reply_html(self, page):
+        body = page.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         config = load_config()
         if self.path == "/":
-            body = GUI_PAGE.encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self.reply_html(GUI_PAGE)
+        elif self.path == "/mixer":
+            self.reply_html(MIXER_PAGE)
+        elif self.path == "/mixer.json":
+            self.reply(200, mixer_state(config))
         elif self.path == "/status":
             self.reply(200, status(config))
         elif self.path == "/channels":
@@ -260,12 +421,14 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.reply(404, {"error": "not found"})
 
-    def body_field(self, field):
+    def body_json(self):
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
-            return None
-        body = json.loads(self.rfile.read(length))
-        return body.get(field)
+            return {}
+        return json.loads(self.rfile.read(length))
+
+    def body_field(self, field):
+        return self.body_json().get(field)
 
     def do_POST(self):
         config = load_config()
@@ -285,6 +448,13 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self.reply(400, {"error": str(e)})
             self.reply(200, status(config))
+        elif self.path == "/volume":
+            try:
+                body = self.body_json()
+                set_volume(body.get("type"), body.get("id"), body.get("volume"))
+            except ValueError as e:
+                return self.reply(400, {"error": str(e)})
+            self.reply(200, {"ok": True})
         elif self.path == "/stop":
             stop()
             self.reply(200, status(config))

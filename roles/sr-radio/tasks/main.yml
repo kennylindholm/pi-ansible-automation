@@ -1,7 +1,9 @@
 ---
-- name: Install mpv
+- name: Install mpv and pactl (for the volume mixer)
   ansible.builtin.apt:
-    name: mpv
+    name:
+      - mpv
+      - pulseaudio-utils
     state: present
     update_cache: true
     cache_valid_time: 86400

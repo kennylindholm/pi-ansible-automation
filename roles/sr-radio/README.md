@@ -33,8 +33,11 @@ sr-radio outputs
 
 ## Web GUI + HTTP API (port 8090)
 
-`http://audiopi.local:8090/` serves a small GUI with channel selector
-and play/stop button.
+`http://audiopi.local:8090/` serves a small GUI with channel selector,
+output selector and play/stop button. `/mixer` (linked from the main
+page) is a volume mixer with sliders for each output sink and each
+currently playing stream (radio, Spotify, AirPlay, ...), backed by
+`pactl`; WirePlumber remembers the volumes across reboots.
 
 ```
 GET  /status              -> {"playing": bool, "channel": "p4stockholm", "output": "aux"}
@@ -44,6 +47,8 @@ POST /play                body optional: {"channel": "p3"} (default: current cha
 POST /select              switch channel; applies immediately if playing
 POST /output              body: {"output": "usb"}; applies immediately if playing
 POST /stop
+GET  /mixer.json          -> {"sinks": [{"id", "name", "volume"}], "streams": [...]}
+POST /volume              body: {"type": "sink"|"stream", "id": ..., "volume": 0-100}
 ```
 
 The GUI polls `/status` every 3 s and always mirrors the server state,
