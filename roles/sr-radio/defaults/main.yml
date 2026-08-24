@@ -19,8 +19,14 @@ sr_radio_channels:
 sr_radio_default_channel: p4stockholm
 sr_radio_api_port: 8090
 
-# mpv audio output device; empty string = system default sink.
+# Selectable mpv audio output devices; empty device = system default sink.
 # List devices on the pi: mpv --audio-device=help
-# This pins playback to the built-in 3.5mm jack (aux) so it does not follow
-# the default sink (e.g. the USB sound card).
-sr_radio_audio_device: pipewire/alsa_output.platform-fe00b840.mailbox.stereo-fallback
+sr_radio_outputs:
+  aux:
+    name: Aux
+    device: pipewire/alsa_output.platform-fe00b840.mailbox.stereo-fallback
+  usb:
+    name: Förstärkare (USB)
+    device: pipewire/alsa_output.usb-TEAC_TEAC_USB_AUDIO_DEVICE-02.analog-stereo
+
+sr_radio_default_output: aux

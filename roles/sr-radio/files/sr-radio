@@ -6,14 +6,18 @@ CLI:
   sr-radio stop             stop playback
   sr-radio status           show playback state and channel
   sr-radio channels         list available channels
+  sr-radio output [OUTPUT]  show or set audio output
+  sr-radio outputs          list available outputs
 
 HTTP API (run by sr-radio-api.service):
   GET  /                    web GUI
-  GET  /status              {"playing": bool, "channel": str}
+  GET  /status              {"playing": bool, "channel": str, "output": str}
   GET  /channels            {"channels": [{"id": str, "name": str}], "default": str}
+  GET  /outputs             {"outputs": [{"id": str, "name": str}], "default": str}
   POST /play                body {"channel": "p3"}, optional (default: current channel)
   POST /select              switch channel without starting playback; if already
                             playing, switches immediately
+  POST /output              body {"output": "aux"}; applies immediately if playing
   POST /stop
 
 Internal:
@@ -28,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CONFIG_FILE = os.environ.get("SR_RADIO_CONFIG", "/opt/sr-radio/config.json")
 STATE_FILE = os.environ.get("SR_RADIO_STATE", "/opt/sr-radio/current")
+OUTPUT_FILE = os.environ.get("SR_RADIO_OUTPUT", "/opt/sr-radio/output")
 
 
 def load_config():
@@ -35,13 +40,22 @@ def load_config():
         return json.load(f)
 
 
-def current_channel(config):
+def read_state(path):
     try:
-        with open(STATE_FILE) as f:
-            channel = f.read().strip()
+        with open(path) as f:
+            return f.read().strip()
     except FileNotFoundError:
-        channel = ""
+        return ""
+
+
+def current_channel(config):
+    channel = read_state(STATE_FILE)
     return channel if channel in config["channels"] else config["default_channel"]
+
+
+def current_output(config):
+    output = read_state(OUTPUT_FILE)
+    return output if output in config["outputs"] else config["default_output"]
 
 
 def systemctl(*args):
@@ -73,13 +87,24 @@ def select(config, channel):
         systemctl("restart", "sr-radio")
 
 
+def set_output(config, output):
+    if output not in config["outputs"]:
+        raise ValueError("unknown output: %s (available: %s)"
+                         % (output, ", ".join(sorted(config["outputs"]))))
+    with open(OUTPUT_FILE, "w") as f:
+        f.write(output + "\n")
+    if is_playing():
+        systemctl("restart", "sr-radio")
+
+
 def stop():
     systemctl("disable", "--quiet", "sr-radio")
     systemctl("stop", "sr-radio")
 
 
 def status(config):
-    return {"playing": is_playing(), "channel": current_channel(config)}
+    return {"playing": is_playing(), "channel": current_channel(config),
+            "output": current_output(config)}
 
 
 def run_player(config):
@@ -90,8 +115,9 @@ def run_player(config):
     args = ["mpv", "--no-video", "--really-quiet",
             "--network-timeout=10",
             "--stream-lavf-o=reconnect=1,reconnect_streamed=1"]
-    if config.get("audio_device"):
-        args.append("--audio-device=" + config["audio_device"])
+    device = config["outputs"][current_output(config)]["device"]
+    if device:
+        args.append("--audio-device=" + device)
     os.execvp("mpv", args + [url])
 
 
@@ -116,12 +142,18 @@ GUI_PAGE = """<!doctype html>
             background: #4ea8de; color: #06121c; }
   #toggle.playing { background: #d9534f; color: #fff; }
   #status { margin-top: 1rem; text-align: center; color: #7c868e; }
+  label { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem;
+          color: #7c868e; font-size: .95rem; }
+  #output { flex: 1; padding: .6rem .8rem; border-radius: .6rem;
+            border: 1px solid #2a3138; background: #1a2025; color: #e8eaed;
+            font-size: 1rem; }
 </style>
 </head>
 <body>
 <main>
   <h1>SR Radio</h1>
   <div id="channels"></div>
+  <label>Utg&aring;ng <select id="output"></select></label>
   <button id="toggle" disabled>&#9654; Spela</button>
   <p id="status">Laddar&hellip;</p>
 </main>
@@ -137,6 +169,7 @@ GUI_PAGE = """<!doctype html>
   function paint() {
     for (const btn of document.querySelectorAll(".ch"))
       btn.classList.toggle("sel", btn.dataset.id === st.channel);
+    document.getElementById("output").value = st.output;
     const toggle = document.getElementById("toggle");
     toggle.disabled = false;
     toggle.classList.toggle("playing", st.playing);
@@ -172,6 +205,18 @@ GUI_PAGE = """<!doctype html>
       btn.onclick = () => pickChannel(ch.id);
       box.appendChild(btn);
     }
+    const outs = await j("/outputs");
+    const sel = document.getElementById("output");
+    for (const o of outs.outputs) {
+      const opt = document.createElement("option");
+      opt.value = o.id;
+      opt.textContent = o.name;
+      sel.appendChild(opt);
+    }
+    sel.onchange = async () => {
+      st = await j("/output", { output: sel.value });
+      paint();
+    };
     document.getElementById("toggle").onclick = toggle;
     await refresh();
     setInterval(refresh, 3000);
@@ -208,25 +253,35 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {"channels": [{"id": cid, "name": ch["name"]}
                                           for cid, ch in sorted(config["channels"].items())],
                              "default": config["default_channel"]})
+        elif self.path == "/outputs":
+            self.reply(200, {"outputs": [{"id": oid, "name": o["name"]}
+                                         for oid, o in sorted(config["outputs"].items())],
+                             "default": config["default_output"]})
         else:
             self.reply(404, {"error": "not found"})
 
-    def body_channel(self, config):
+    def body_field(self, field):
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
             return None
         body = json.loads(self.rfile.read(length))
-        return body.get("channel")
+        return body.get(field)
 
     def do_POST(self):
         config = load_config()
         if self.path in ("/play", "/select"):
             try:
-                channel = self.body_channel(config)
+                channel = self.body_field("channel")
                 if self.path == "/play":
                     play(config, channel)
                 else:
                     select(config, channel or current_channel(config))
+            except ValueError as e:
+                return self.reply(400, {"error": str(e)})
+            self.reply(200, status(config))
+        elif self.path == "/output":
+            try:
+                set_output(config, self.body_field("output") or current_output(config))
             except ValueError as e:
                 return self.reply(400, {"error": str(e)})
             self.reply(200, status(config))
@@ -256,6 +311,13 @@ def main():
     elif cmd == "channels":
         for cid, ch in sorted(config["channels"].items()):
             print("%s\t%s" % (cid, ch["name"]))
+    elif cmd == "output":
+        if len(sys.argv) > 2:
+            set_output(config, sys.argv[2])
+        print(current_output(config))
+    elif cmd == "outputs":
+        for oid, o in sorted(config["outputs"].items()):
+            print("%s\t%s" % (oid, o["name"]))
     elif cmd == "serve":
         ThreadingHTTPServer(("0.0.0.0", config["port"]), Handler).serve_forever()
     elif cmd == "_run":

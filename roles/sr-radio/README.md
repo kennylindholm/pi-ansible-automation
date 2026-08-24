@@ -10,10 +10,11 @@ Two systemd user services for the `media` user:
   resumes after a power loss but stays off after a deliberate stop.
 - `sr-radio-api.service` — stdlib Python HTTP API, enabled at boot.
 
-Channels, API port and audio output device are configured in
-`defaults/main.yml` and rendered to `/opt/sr-radio/config.json`.
-Playback is pinned to the built-in 3.5mm jack (`sr_radio_audio_device`)
-so it does not follow the default sink; list device names with
+Channels, API port and audio outputs are configured in `defaults/main.yml`
+and rendered to `/opt/sr-radio/config.json`. The output is selectable
+(GUI dropdown, `sr-radio output <id>`, or `POST /output`) between the
+built-in 3.5mm jack (aux, default) and the USB sound card, so playback
+does not follow the system default sink; list device names with
 `mpv --audio-device=help`. Stream URLs use SR's stable channel-id
 redirects, AAC 320 kbps variant (the plain `<id>.mp3` URLs are only
 96 kbps MP3). List all channel ids:
@@ -26,6 +27,8 @@ sr-radio play [channel]   # default: p4stockholm
 sr-radio stop
 sr-radio status
 sr-radio channels
+sr-radio output [id]      # show or set output (aux/usb)
+sr-radio outputs
 ```
 
 ## Web GUI + HTTP API (port 8090)
@@ -34,10 +37,12 @@ sr-radio channels
 and play/stop button.
 
 ```
-GET  /status              -> {"playing": bool, "channel": "p4stockholm"}
+GET  /status              -> {"playing": bool, "channel": "p4stockholm", "output": "aux"}
 GET  /channels            -> {"channels": [{"id": "p1", "name": "P1"}, ...], "default": "p4stockholm"}
+GET  /outputs             -> {"outputs": [{"id": "aux", "name": "Aux"}, ...], "default": "aux"}
 POST /play                body optional: {"channel": "p3"} (default: current channel)
 POST /select              switch channel; applies immediately if playing
+POST /output              body: {"output": "usb"}; applies immediately if playing
 POST /stop
 ```
 
