@@ -25,6 +25,14 @@
     mode: '0644'
   notify: Restart sr-radio-api
 
+- name: Deploy channel logos
+  ansible.builtin.copy:
+    src: logos/
+    dest: /opt/sr-radio/logos/
+    owner: media
+    group: media
+    mode: '0644'
+
 - name: Install sr-radio CLI
   ansible.builtin.copy:
     src: sr-radio
