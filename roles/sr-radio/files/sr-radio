@@ -184,7 +184,7 @@ GUI_PAGE = """<!doctype html>
 <style>
   body { font-family: system-ui, sans-serif; background: #101418; color: #e8eaed;
          margin: 0; display: flex; justify-content: center; min-height: 100vh; }
-  main { width: min(420px, 92vw); padding: 2.5rem 0 5.5rem; }
+  main { width: min(420px, 92vw); padding: 2.5rem 0 11rem; }
   h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.2rem; }
   #channels { display: grid; gap: .5rem; margin-bottom: 1.2rem; }
   .ch { padding: .9rem 1rem; border-radius: .6rem; border: 1px solid #2a3138;
@@ -195,7 +195,7 @@ GUI_PAGE = """<!doctype html>
             border: 0; border-radius: .6rem; cursor: pointer;
             background: #4ea8de; color: #06121c; }
   #toggle.playing { background: #d9534f; color: #fff; }
-  #status { margin-top: 1rem; text-align: center; color: #7c868e; }
+  #status { margin: 0; text-align: center; color: #7c868e; font-size: .95rem; }
   label { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.2rem;
           color: #7c868e; font-size: .95rem; }
   #output { flex: 1; padding: .6rem .8rem; border-radius: .6rem;
@@ -203,18 +203,19 @@ GUI_PAGE = """<!doctype html>
             font-size: 1rem; }
   .nav { margin-top: 1.6rem; text-align: center; }
   .nav a { color: #4ea8de; text-decoration: none; }
-  #volbar { position: fixed; bottom: 0; left: 0; right: 0; display: none;
-            justify-content: center; background: rgba(22, 27, 32, .96);
-            border-top: 1px solid #2a3138;
-            padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); }
-  #volbar .inner { width: min(420px, 92vw); display: flex; align-items: center;
-                   gap: .8rem; }
-  #volbar .vlab { flex: 0 0 auto; max-width: 35%; overflow: hidden;
+  #volbar { position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+            box-sizing: border-box; justify-content: center;
+            background: #161b20; border-top: 1px solid #2a3138;
+            padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom)); }
+  #volbar .inner { width: min(420px, 100%); display: flex;
+                   flex-direction: column; gap: .6rem; }
+  .volrow { display: none; align-items: center; gap: .8rem; }
+  .volrow .vlab { flex: 0 0 auto; max-width: 35%; overflow: hidden;
                   text-overflow: ellipsis; white-space: nowrap;
                   color: #7c868e; font-size: .95rem; }
-  #volbar input[type=range] { flex: 1; accent-color: #4ea8de; }
-  #volbar .pct { flex: 0 0 3.2em; text-align: right; color: #7c868e;
-                 font-variant-numeric: tabular-nums; }
+  .volrow input[type=range] { flex: 1; accent-color: #4ea8de; min-width: 0; }
+  .volrow .pct { flex: 0 0 3.6em; text-align: right; color: #7c868e;
+                 font-variant-numeric: tabular-nums; font-size: .95rem; }
 </style>
 </head>
 <body>
@@ -222,20 +223,22 @@ GUI_PAGE = """<!doctype html>
   <h1>SR Radio</h1>
   <div id="channels"></div>
   <label>Utg&aring;ng <select id="output"></select></label>
-  <button id="toggle" disabled>&#9654; Spela</button>
-  <p id="status">Laddar&hellip;</p>
   <p class="nav"><a href="/mixer">Mixer &rarr;</a></p>
 </main>
 <div id="volbar">
   <div class="inner">
-    <span class="vlab" id="vollabel">Volym</span>
-    <input type="range" id="volslider" min="0" max="100" value="0">
-    <span class="pct" id="volpct">&ndash;</span>
+    <button id="toggle" disabled>&#9654; Spela</button>
+    <p id="status">Laddar&hellip;</p>
+    <div class="volrow" id="volrow">
+      <span class="vlab">Volym</span>
+      <input type="range" id="volslider" min="0" max="100" value="0">
+      <span class="pct" id="volpct">&ndash;</span>
+    </div>
   </div>
 </div>
 <script>
   let names = {}, outNames = {}, st = { playing: false, channel: null };
-  let volSink = null, volDrag = false;
+  let volSinks = [], volDrag = false;
 
   const j = (url, body) => fetch(url, body === undefined ? {} : {
     method: "POST",
@@ -267,15 +270,17 @@ GUI_PAGE = """<!doctype html>
 
   async function refreshVolume() {
     const m = await j("/mixer.json");
-    const sink = m.sinks.find(s => s.name === outNames["usb"]);
-    const bar = document.getElementById("volbar");
-    if (!sink) { bar.style.display = "none"; return; }
-    volSink = sink.id;
-    bar.style.display = "flex";
-    document.getElementById("vollabel").textContent = sink.name;
+    const wanted = Object.values(outNames);
+    const sinks = m.sinks.filter(s => wanted.includes(s.name));
+    const row = document.getElementById("volrow");
+    if (!sinks.length) { row.style.display = "none"; return; }
+    volSinks = sinks.map(s => s.id);
+    row.style.display = "flex";
     if (!volDrag) {
-      document.getElementById("volslider").value = sink.volume;
-      document.getElementById("volpct").textContent = sink.volume + "%";
+      const vol = Math.round(
+        sinks.reduce((sum, s) => sum + s.volume, 0) / sinks.length);
+      document.getElementById("volslider").value = vol;
+      document.getElementById("volpct").textContent = vol + "%";
     }
   }
 
@@ -316,8 +321,8 @@ GUI_PAGE = """<!doctype html>
     slider.oninput = () => {
       document.getElementById("volpct").textContent = slider.value + "%";
       clearTimeout(volTimer);
-      volTimer = setTimeout(
-        () => j("/volume", { type: "sink", id: volSink, volume: +slider.value }), 150);
+      volTimer = setTimeout(() => volSinks.forEach(
+        id => j("/volume", { type: "sink", id: id, volume: +slider.value })), 150);
     };
     slider.onpointerdown = () => { volDrag = true; };
     slider.onpointerup = slider.onpointercancel = () => { volDrag = false; };
@@ -352,8 +357,9 @@ MIXER_PAGE = """<!doctype html>
   .lab { flex: 0 0 30%; overflow: hidden; text-overflow: ellipsis;
          white-space: nowrap; }
   input[type=range] { flex: 1; accent-color: #4ea8de; }
-  .pct { flex: 0 0 3.2em; text-align: right; color: #7c868e;
+  .pct { flex: 0 0 3.6em; text-align: right; color: #7c868e;
          font-variant-numeric: tabular-nums; }
+  input[type=range] { min-width: 0; }
   .empty { color: #7c868e; }
 </style>
 </head>
