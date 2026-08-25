@@ -184,7 +184,7 @@ GUI_PAGE = """<!doctype html>
 <style>
   body { font-family: system-ui, sans-serif; background: #101418; color: #e8eaed;
          margin: 0; display: flex; justify-content: center; min-height: 100vh; }
-  main { width: min(420px, 92vw); padding: 2.5rem 0; }
+  main { width: min(420px, 92vw); padding: 2.5rem 0 5.5rem; }
   h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.2rem; }
   #channels { display: grid; gap: .5rem; margin-bottom: 1.2rem; }
   .ch { padding: .9rem 1rem; border-radius: .6rem; border: 1px solid #2a3138;
@@ -203,6 +203,18 @@ GUI_PAGE = """<!doctype html>
             font-size: 1rem; }
   .nav { margin-top: 1.6rem; text-align: center; }
   .nav a { color: #4ea8de; text-decoration: none; }
+  #volbar { position: fixed; bottom: 0; left: 0; right: 0; display: none;
+            justify-content: center; background: rgba(22, 27, 32, .96);
+            border-top: 1px solid #2a3138;
+            padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); }
+  #volbar .inner { width: min(420px, 92vw); display: flex; align-items: center;
+                   gap: .8rem; }
+  #volbar .vlab { flex: 0 0 auto; max-width: 35%; overflow: hidden;
+                  text-overflow: ellipsis; white-space: nowrap;
+                  color: #7c868e; font-size: .95rem; }
+  #volbar input[type=range] { flex: 1; accent-color: #4ea8de; }
+  #volbar .pct { flex: 0 0 3.2em; text-align: right; color: #7c868e;
+                 font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -214,8 +226,16 @@ GUI_PAGE = """<!doctype html>
   <p id="status">Laddar&hellip;</p>
   <p class="nav"><a href="/mixer">Mixer &rarr;</a></p>
 </main>
+<div id="volbar">
+  <div class="inner">
+    <span class="vlab" id="vollabel">Volym</span>
+    <input type="range" id="volslider" min="0" max="100" value="0">
+    <span class="pct" id="volpct">&ndash;</span>
+  </div>
+</div>
 <script>
-  let names = {}, st = { playing: false, channel: null };
+  let names = {}, outNames = {}, st = { playing: false, channel: null };
+  let volSink = null, volDrag = false;
 
   const j = (url, body) => fetch(url, body === undefined ? {} : {
     method: "POST",
@@ -245,9 +265,24 @@ GUI_PAGE = """<!doctype html>
     paint();
   }
 
+  async function refreshVolume() {
+    const m = await j("/mixer.json");
+    const sink = m.sinks.find(s => s.name === outNames["usb"]);
+    const bar = document.getElementById("volbar");
+    if (!sink) { bar.style.display = "none"; return; }
+    volSink = sink.id;
+    bar.style.display = "flex";
+    document.getElementById("vollabel").textContent = sink.name;
+    if (!volDrag) {
+      document.getElementById("volslider").value = sink.volume;
+      document.getElementById("volpct").textContent = sink.volume + "%";
+    }
+  }
+
   async function refresh() {
     st = await j("/status");
     paint();
+    await refreshVolume();
   }
 
   async function init() {
@@ -265,6 +300,7 @@ GUI_PAGE = """<!doctype html>
     const outs = await j("/outputs");
     const sel = document.getElementById("output");
     for (const o of outs.outputs) {
+      outNames[o.id] = o.name;
       const opt = document.createElement("option");
       opt.value = o.id;
       opt.textContent = o.name;
@@ -275,6 +311,16 @@ GUI_PAGE = """<!doctype html>
       paint();
     };
     document.getElementById("toggle").onclick = toggle;
+    const slider = document.getElementById("volslider");
+    let volTimer = null;
+    slider.oninput = () => {
+      document.getElementById("volpct").textContent = slider.value + "%";
+      clearTimeout(volTimer);
+      volTimer = setTimeout(
+        () => j("/volume", { type: "sink", id: volSink, volume: +slider.value }), 150);
+    };
+    slider.onpointerdown = () => { volDrag = true; };
+    slider.onpointerup = slider.onpointercancel = () => { volDrag = false; };
     await refresh();
     setInterval(refresh, 3000);
   }
