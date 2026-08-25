@@ -212,12 +212,14 @@ GUI_PAGE = """<!doctype html>
             padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom)); }
   #volbar .inner { width: min(420px, 100%); display: flex;
                    flex-direction: column; gap: .6rem; }
-  .volrow { display: none; align-items: center; gap: .8rem; }
-  .volrow .vlab { flex: 0 0 auto; max-width: 35%; overflow: hidden;
-                  text-overflow: ellipsis; white-space: nowrap;
-                  color: #7c868e; font-size: .95rem; }
+  .volrow { display: none; align-items: center; gap: .5rem; }
+  .volrow .vlab { flex: 0 0 auto; font-size: 1.1rem; }
   .volrow input[type=range] { flex: 1; accent-color: #4ea8de; min-width: 0; }
-  .volrow .pct { flex: 0 0 3.6em; text-align: right; color: #7c868e;
+  .volbtn { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; border-radius: .5rem;
+            border: 1px solid #2a3138; background: #1a2025; color: #e8eaed;
+            font-size: 1.15rem; line-height: 1; cursor: pointer; }
+  .volbtn:active { background: #17384f; }
+  .volrow .pct { flex: 0 0 2.7em; text-align: left; color: #7c868e;
                  font-variant-numeric: tabular-nums; font-size: .95rem; }
 </style>
 </head>
@@ -232,15 +234,17 @@ GUI_PAGE = """<!doctype html>
     <button id="toggle" disabled>&#9654; Spela</button>
     <p id="status">Laddar&hellip;</p>
     <div class="volrow" id="volrow">
-      <span class="vlab">Volym</span>
+      <span class="vlab">&#128266;</span>
+      <button class="volbtn" id="voldown">&minus;</button>
       <input type="range" id="volslider" min="0" max="100" value="0">
+      <button class="volbtn" id="volup">+</button>
       <span class="pct" id="volpct">&ndash;</span>
     </div>
   </div>
 </div>
 <script>
   let names = {}, outNames = {}, st = { playing: false, channel: null };
-  let volSinks = [], volDrag = false;
+  let volSinks = [], volDrag = false, volHold = 0;
 
   const j = (url, body) => fetch(url, body === undefined ? {} : {
     method: "POST",
@@ -278,7 +282,7 @@ GUI_PAGE = """<!doctype html>
     if (!sinks.length) { row.style.display = "none"; return; }
     volSinks = sinks.map(s => s.id);
     row.style.display = "flex";
-    if (!volDrag) {
+    if (!volDrag && Date.now() > volHold) {
       const vol = Math.round(
         sinks.reduce((sum, s) => sum + s.volume, 0) / sinks.length);
       document.getElementById("volslider").value = vol;
@@ -324,12 +328,18 @@ GUI_PAGE = """<!doctype html>
     document.getElementById("toggle").onclick = toggle;
     const slider = document.getElementById("volslider");
     let volTimer = null;
-    slider.oninput = () => {
+    const sendVol = () => {
+      volHold = Date.now() + 800;
       document.getElementById("volpct").textContent = slider.value + "%";
       clearTimeout(volTimer);
       volTimer = setTimeout(() => volSinks.forEach(
         id => j("/volume", { type: "sink", id: id, volume: +slider.value })), 150);
     };
+    slider.oninput = sendVol;
+    document.getElementById("voldown").onclick =
+      () => { slider.value = +slider.value - 5; sendVol(); };
+    document.getElementById("volup").onclick =
+      () => { slider.value = +slider.value + 5; sendVol(); };
     slider.onpointerdown = () => { volDrag = true; };
     slider.onpointerup = slider.onpointercancel = () => { volDrag = false; };
     await refresh();
